@@ -48,3 +48,8 @@ jobs:
         git add app/engine/yoga_pose_model.keras
         git commit -m "🤖 MLOps Auto-Update: Retrained and validated yoga_pose_model.keras" || echo "No model changes detected"
         git push
+
+    - name: Run Analysis
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      run: python generate_report.py
