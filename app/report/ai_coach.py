@@ -2,7 +2,7 @@ import google.generativeai as genai
 import os
 
 # Configure your API Key (Set this in your environment variables)
-genai.configure(api_key="AIzaSyBe7I3mCae9lNV-Snhw1lgwfOlNrfJhdV0")
+genai.configure(api_key="GEMINI_API_KEY")
 
 def get_yoga_wisdom(pose_name, score, top_mistakes):
     """
