@@ -4,6 +4,11 @@ from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
 import numpy as np
 import tensorflow as tf
+import os
+import base64
+import google.generativeai as genai
+from dotenv import load_dotenv
+from gtts import gTTS
 
 from app.engine.constraint_engine import run_constraint_check, calculate_angle
 import mediapipe as mp
@@ -12,6 +17,53 @@ from mediapipe.tasks.python.core import base_options as mp_base_options
 from mediapipe.tasks.python.vision.core import vision_task_running_mode
 from app.live.audio_feedback import AudioFeedback
 
+# ── SETUP GEMINI API ──────────────────────────────────────────────────────────
+load_dotenv()
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+# ── AI VOICE COACH FUNCTIONS ──────────────────────────────────────────────────
+def get_live_voice_coaching(pose_name, violations):
+    """Asks Gemini for a strict, continuous paragraph based on current mistakes."""
+    if not violations:
+        return f"Your {pose_name} looks excellent! Hold that alignment, keep your core engaged, and remember to take deep breaths."
+    
+    # Extract just the text mistakes to keep the prompt clean
+    mistakes_list = [v['mistake'] for v in violations]
+    mistakes_str = ", ".join(mistakes_list)
+    
+    prompt = f"""
+    Act as a professional Yoga Audio Coach. The user is holding {pose_name} but making these mistakes: {mistakes_str}.
+    
+    Write EXACTLY THREE SENTENCES to speak out loud to them right now to fix their pose. 
+    Sentence 1: Acknowledge the pose and the main issue.
+    Sentence 2: Give a direct physical instruction to fix it.
+    Sentence 3: An encouraging cue about breathing or balance.
+    
+    CRITICAL INSTRUCTION: Return ONLY the spoken words. Do not use line breaks, bullet points, asterisks, bold text, or emojis. Write it as a single, continuous paragraph.
+    """
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(prompt)
+        # Strip out any rogue markdown just in case Gemini disobeys
+        clean_text = response.text.replace("*", "").replace("#", "").replace("\n", " ")
+        return clean_text
+    except Exception as e:
+        return "Keep holding the pose, check your alignment on the screen, and breathe deeply."
+
+
+def play_audio_from_text(text):
+    """Converts text to speech and plays it using Streamlit's stable native player."""
+    tts = gTTS(text=text, lang='en', tld='co.uk')
+    audio_file = "coach_audio.mp3"
+    tts.save(audio_file)
+    
+    with open(audio_file, "rb") as f:
+        audio_bytes = f.read()
+        
+    # Streamlit's native audio widget handles browser autoplay much better!
+    st.audio(audio_bytes, format="audio/mp3", autoplay=True)
+    
+    os.remove(audio_file)
 # ── LOAD KERAS CNN MODEL ──────────────────────────────────────────────────────
 @st.cache_resource 
 def load_pose_classifier():
@@ -60,8 +112,6 @@ def get_norm(landmarks, name):
 def extract_joint_angles(landmarks, w, h):
     def c(name): return get_coords(landmarks, name, w, h)
 
-    # ── DYNAMIC LEG DETECTION ──
-    # Determine which leg is "front" based on X-coordinates (closer to left edge)
     if c("left_ankle")[0] < c("right_ankle")[0]:
         front_h, front_k, front_a = "left_hip", "left_knee", "left_ankle"
         back_h, back_k, back_a = "right_hip", "right_knee", "right_ankle"
@@ -69,7 +119,6 @@ def extract_joint_angles(landmarks, w, h):
         front_h, front_k, front_a = "right_hip", "right_knee", "right_ankle"
         back_h, back_k, back_a = "left_hip", "left_knee", "left_ankle"
 
-    # Determine which leg is "raised" for Tree Pose based on Y-coordinates (higher up)
     if c("left_knee")[1] < c("right_knee")[1]:
         raised_h, raised_k, raised_a = "left_hip", "left_knee", "left_ankle"
         stand_h, stand_k, stand_a = "right_hip", "right_knee", "right_ankle"
@@ -122,50 +171,35 @@ def draw_feedback_panel(frame, violations, pose_name):
     h, w = frame.shape[:2]
     overlay = frame.copy()
     
-    # ── UI SETTINGS: Small floating window at the top right ──
     box_width = 380
-    # Dynamically calculate height based on the number of mistakes (or keep it small if perfect)
     box_height = 80 + (len(violations[:3]) * 60) if violations else 80
+    start_x = w - box_width - 20 
+    start_y = 20                 
     
-    start_x = w - box_width - 20 # 20 pixels of padding from the right edge
-    start_y = 20                 # 20 pixels of padding from the top edge
-    
-    # Draw the semi-transparent black background
     cv2.rectangle(overlay, (start_x, start_y), (start_x + box_width, start_y + box_height), (0, 0, 0), -1)
     cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
 
-    # ── DRAW THE POSE NAME HEADER ──
     y = start_y + 35
-    cv2.putText(frame, f"Pose: {pose_name}", (start_x + 15, y),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+    cv2.putText(frame, f"Pose: {pose_name}", (start_x + 15, y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
     y += 35
 
-    # ── DRAW THE TEXT (MISTAKES OR PRAISE) ──
     if not violations:
-        cv2.putText(frame, "Perfect form! Hold it.", (start_x + 15, y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        cv2.putText(frame, "Perfect form! Hold it.", (start_x + 15, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     else:
-        # Only show the top 3 mistakes so the box doesn't run off the screen
         for v in violations[:3]:
-            # Print the Mistake in Red
-            cv2.putText(frame, f"X {v['mistake'][:40]}", (start_x + 15, y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            cv2.putText(frame, f"X {v['mistake'][:40]}", (start_x + 15, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
             y += 20
-            
-            # Print the Correction in Cyan (Yellow-ish) and wrap the text
             words = v["correction"].split()
             line  = ""
             for word in words:
                 if len(line + word) < 40:
                     line += word + " "
                 else:
-                    cv2.putText(frame, f"  {line}", (start_x + 15, y),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
+                    cv2.putText(frame, f"  {line}", (start_x + 15, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
                     y += 20
                     line = word + " "
             if line:
-                cv2.putText(frame, f"  {line}", (start_x + 15, y),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
+                cv2.putText(frame, f"  {line}", (start_x + 15, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
                 y += 25
                 
     return frame
@@ -185,15 +219,13 @@ class PoseProcessor(VideoProcessorBase):
         )
         self.detector   = mp_vision.PoseLandmarker.create_from_options(options)
         
-        # State variables
         self.mode = "Auto-Detect (AI)" 
         self.pose_name  = "Warrior II"
         self.violations = []
         
-        # Performance & Audio
         self.frame_ts   = 0
         self.frame_count = 0
-        self.inference_interval = 30 # Run CNN every 30 frames
+        self.inference_interval = 30 
         self.audio      = AudioFeedback()  
 
     def recv(self, frame):
@@ -202,33 +234,22 @@ class PoseProcessor(VideoProcessorBase):
 
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         
-        # ── 1. MEDIAPIPE RUNS FIRST ──
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         self.frame_ts += 1
         results = self.detector.detect_for_video(mp_image, self.frame_ts)
-
         self.frame_count += 1
 
         if results.pose_landmarks and len(results.pose_landmarks) > 0:
             landmarks = results.pose_landmarks[0]
 
-            # ── 2. HYBRID MODE LOGIC (THE SMART CROP) ──
             if self.mode == "Auto-Detect (AI)":
                 if POSE_MODEL is not None and self.frame_count % self.inference_interval == 0:
-                    
-                    # Find the bounding box of the user's body
                     x_coords = [int(lm.x * w) for lm in landmarks]
                     y_coords = [int(lm.y * h) for lm in landmarks]
-                    
-                    # Add a 50-pixel margin around the body so we don't cut off limbs
                     x_min, x_max = max(0, min(x_coords) - 50), min(w, max(x_coords) + 50)
                     y_min, y_max = max(0, min(y_coords) - 50), min(h, max(y_coords) + 50)
                     
-                    # Crop the background out!
                     cropped_rgb = rgb[y_min:y_max, x_min:x_max]
-                    
-                    # Now send the clean, cropped image to your CNN
-                    # Note: Ensure (75, 75) matches exactly what you used in your Jupyter notebook!
                     input_img = cv2.resize(cropped_rgb, (75, 75))
                     input_img = input_img.astype(np.float32) / 255.0
                     input_img = np.expand_dims(input_img, axis=0)
@@ -237,60 +258,47 @@ class PoseProcessor(VideoProcessorBase):
                     class_idx = np.argmax(predictions[0])
                     confidence = np.max(predictions[0]) * 100
                     
-                    # Only change the pose if the AI is reasonably confident (> 60%)
                     if confidence > 60.0:
                         self.pose_name = KERAS_CLASS_MAP.get(class_idx, self.pose_name)
             else:
-                # Strictly use the manually selected pose
                 self.pose_name = self.mode
 
-            # ── 3. CONSTRAINT ENGINE CHECKS ──
             joint_angles = extract_joint_angles(landmarks, w, h)
             alignment_lm = extract_landmarks_for_alignment(landmarks)
 
-            self.violations = run_constraint_check(
-                self.pose_name, joint_angles, alignment_lm
-            )
+            self.violations = run_constraint_check(self.pose_name, joint_angles, alignment_lm)
 
-            # Audio coaching
+            # Local audio beep feedback
             self.audio.process_violations(self.violations)
 
-            # Visual coaching
+            # Visual feedback
             img = draw_skeleton(img, landmarks, self.violations, w, h)
             img = draw_feedback_panel(img, self.violations, self.pose_name)
 
         else:
-            cv2.putText(img, "No pose detected — adjust position",
-                        (30, 50), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.8, (0, 0, 255), 2)
+            self.violations = [] # Clear violations if nobody is in frame
+            cv2.putText(img, "No pose detected — adjust position", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
+
 # ── Streamlit UI ──────────────────────────────────────────────────────────────
 def run_live_mode():
     st.title("AI Asana Analyst — Live Coach")
     st.markdown("Select your pose or use AI Auto-Detect, step back, and the AI will guide your alignment in real-time.")
 
+    # Top control row
     col1, col2 = st.columns([3, 1])
     with col1:
         selected_mode = st.selectbox(
             "Select Practice Mode",
-            [
-                "Auto-Detect (AI)", 
-                "Warrior II", 
-                "Tree Pose", 
-                "Downward Dog", 
-                "Plank", 
-                "Goddess Pose", 
-                "Triangle Pose"
-            ]
+            ["Auto-Detect (AI)", "Warrior II", "Tree Pose", "Downward Dog", "Plank", "Goddess Pose", "Triangle Pose"]
         )
     with col2:
-        # Use session state so checking the box doesn't break the WebRTC video stream
         if "coach_muted" not in st.session_state:
             st.session_state.coach_muted = False
-        st.write("") # spacing
-        st.write("") # spacing
-        mute_toggle = st.checkbox("🔇 Mute Coach", value=st.session_state.coach_muted)
+        st.write("") 
+        st.write("") 
+        mute_toggle = st.checkbox("🔇 Mute Local Beeps", value=st.session_state.coach_muted)
         st.session_state.coach_muted = mute_toggle
 
     guidance = {
@@ -304,26 +312,49 @@ def run_live_mode():
     }
     st.info(guidance.get(selected_mode, ""))
 
-    # ── THE LAG FIX: Optimize Camera Resolution and Processing ──
-    ctx = webrtc_streamer(
-        key="pose",
-        video_processor_factory=PoseProcessor,
-        rtc_configuration={
-            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-        },
-        media_stream_constraints={
-            "video": {
-                "width": {"ideal": 640},   # Force a lighter 480p resolution
-                "height": {"ideal": 480},
-                "frameRate": {"ideal": 15, "max": 20} # Cap the framerate so Python can keep up
-            }, 
-            "audio": False
-        },
-        async_processing=True, # Critical: Runs the video processing in a background thread
-    )
+    # Video and AI Coach Layout
+    video_col, ai_col = st.columns([2, 1])
+    
+    with video_col:
+        ctx = webrtc_streamer(
+            key="pose",
+            video_processor_factory=PoseProcessor,
+            rtc_configuration={
+                "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+            },
+            media_stream_constraints={
+                "video": {
+                    "width": {"ideal": 640},  
+                    "height": {"ideal": 480},
+                    "frameRate": {"ideal": 15, "max": 20} 
+                }, 
+                "audio": False
+            },
+            async_processing=True, 
+        )
 
-    if ctx.video_processor:
-        # Pass the selected mode down to the processor
-        ctx.video_processor.mode = selected_mode
-        # Pass the mute state down to the audio engine
-        ctx.video_processor.audio.muted = st.session_state.coach_muted
+        if ctx.video_processor:
+            ctx.video_processor.mode = selected_mode
+            ctx.video_processor.audio.muted = st.session_state.coach_muted
+
+    with ai_col:
+        st.markdown("### 🤖 Ask AI Coach")
+        st.write("Need help? Click below and the AI will analyze your current form and speak to you out loud.")
+        
+        if ctx.video_processor:
+            if st.button("🗣️ Coach Me Now", type="primary", use_container_width=True):
+                with st.spinner("AI is analyzing your pose..."):
+                    current_pose = ctx.video_processor.pose_name
+                    current_violations = ctx.video_processor.violations
+                    
+                    # 1. Get the script from Gemini
+                    ai_script = get_live_voice_coaching(current_pose, current_violations)
+                    
+                    # 2. Display the text
+                    st.success(f"**Coach says:** {ai_script}")
+                    
+                    # 3. Read it out loud!
+                    play_audio_from_text(ai_script)
+        else:
+            st.warning("Start the video feed to enable the AI Coach.")
+
