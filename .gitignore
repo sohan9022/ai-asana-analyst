@@ -3,3 +3,8 @@ __pycache__/
 *.zip
 /dataset
 .env
+*.keras
+*.task
+*.pt
+*.pth
+*.h5

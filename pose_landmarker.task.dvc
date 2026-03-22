@@ -1,0 +1,5 @@
+outs:
+- md5: 04a75ddf7c811ac7a1a4523266dd7d88
+  size: 5777746
+  hash: md5
+  path: pose_landmarker.task

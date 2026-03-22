@@ -1,0 +1,5 @@
+outs:
+- md5: 103d9fd25c7b966d7388de65f1becc89
+  size: 28691445
+  hash: md5
+  path: yoga_pose_model.keras
