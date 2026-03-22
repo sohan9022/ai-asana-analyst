@@ -13,6 +13,12 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.lib import colors
 from app.report.ai_coach import get_yoga_wisdom
 
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+load_dotenv()
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
 PRIMARY   = HexColor("#0f3460")
 GOLD      = HexColor("#e94560")
 GREEN     = HexColor("#28a745")
@@ -228,3 +234,29 @@ def generate_report(pose_name, analysis_results, output_path):
         os.unlink(tmp.name)
         
     return output_path
+
+def generate_ai_assistance(pose_data):
+    """
+    pose_data should be a dictionary like:
+    {'name': 'Warrior II', 'accuracy': 72, 'violations': ['Right knee not bent', 'Arms not level']}
+    """
+    
+    # 1. Check if we actually have data, otherwise it will feel "hardcoded"
+    if not pose_data or not pose_data.get('violations'):
+        return "Maintain your focus and keep your core engaged."
+
+    # 2. Dynamic Prompting (The key to fixing the 'same line' issue)
+    prompt = f"""
+    You are a professional Yoga AI Coach. 
+    The user is performing {pose_data['name']} with {pose_data['accuracy']}% accuracy.
+    Specific skeletal errors detected: {", ".join(pose_data['violations'])}.
+
+    Provide a VISUALLY IMPRESSIVE report using Markdown:
+    1. A section titled "🚨 CRITICAL CORRECTIONS" with bullet points.
+    2. A section titled "💡 PRO TIPS" explaining the bio-mechanics of {pose_data['name']}.
+    Keep it concise and encouraging.
+    """
+
+    response = model.generate_content(prompt)
+    return response.text
+
