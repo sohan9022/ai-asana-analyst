@@ -6,3 +6,4 @@ pillow
 google-genai
 kagglehub
 reportlab
+python-dotenv
