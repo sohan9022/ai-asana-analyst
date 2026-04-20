@@ -47,7 +47,7 @@ jobs:
     - name: Run Analysis
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      run: python app/report/report_generator.py
+        run: PYTHONPATH=. python app/report/report_generator.py
 # name: MLOps Production Pipeline
 
 # on:
