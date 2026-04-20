@@ -19,10 +19,9 @@ jobs:
 
     - name: Install Dependencies
       run: |
-      python -m pip install --upgrade pip
-      pip install -r requirements.txt
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
 
-    # 🔥 IMPORTANT: Pass Kaggle credentials
     - name: Set Kaggle Credentials
       env:
         KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
