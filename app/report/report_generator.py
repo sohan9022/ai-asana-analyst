@@ -139,8 +139,8 @@ def generate_report(pose_name, analysis_results, output_path):
         v_data = [v_header]
         for v, angles in unique_v:
             # FIX 1: Use a standard hyphen and safe HTML entity for the degree symbol
-            detected_str = f"{v['detected']}&deg;" if v['detected'] else "—"
-            target_str   = f"{v['min']}-{v['max']}&deg;" if v['min'] else "—"
+            detected_str = f"{v['detected']}°" if v['detected'] else "—"
+            target_str   = f"{v['min']}-{v['max']}°" if v['min'] else "—"
             
             v_data.append([
                 Paragraph(v["joint"].replace("_", " ").title(),
@@ -208,9 +208,9 @@ def generate_report(pose_name, analysis_results, output_path):
                 fontName="Helvetica-Bold", textColor=PRIMARY, spaceAfter=8)))
     
     # Generate the AI summary
-    top_mistakes = unique_v[:2] # Pass top mistakes found
+    # Extract just the violation dictionaries from the unique_v tuples
+    top_mistakes = [v for v, angles in unique_v[:2]] 
     wisdom_text = get_yoga_wisdom(pose_name, score, top_mistakes)
-    
     # Create a highlighted box for the AI feedback
     wisdom_table = Table([[
         Paragraph(f"<i>{wisdom_text}</i>", S("gt", fontSize=10, 
@@ -257,6 +257,7 @@ def generate_ai_assistance(pose_data):
     Keep it concise and encouraging.
     """
 
+    model = genai.GenerativeModel('gemini-1.5-flash')
     response = model.generate_content(prompt)
     return response.text
 
