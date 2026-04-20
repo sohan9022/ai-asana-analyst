@@ -1,0 +1,8 @@
+tensorflow
+opencv-python-headless
+numpy
+scikit-learn
+pillow
+google-genai
+kagglehub
+reportlab
