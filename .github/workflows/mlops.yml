@@ -14,29 +14,28 @@ jobs:
 
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4 # Upgraded to v4
 
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: "3.10"
-        cache: 'pip' # 🚀 Upgraded: Caches dependencies to make the pipeline 3x faster!
+        cache: 'pip' # Requires a requirements.txt file in the repo to work
 
     - name: Install ML Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install tensorflow opencv-python-headless numpy scikit-learn pillow
+        # ADDED: google-genai (or google-generativeai depending on your script)
+        pip install tensorflow opencv-python-headless numpy scikit-learn pillow google-genai
 
     - name: Train Model
       run: python train.py
 
     - name: Evaluate Model
-      # 🚀 Upgraded: If this script fails (accuracy < 70%), the pipeline stops here!
       run: python evaluate.py 
 
     - name: Upload Model Artifact
-      # 🚀 Upgraded: Saves the model in the Actions tab for industry-standard tracking
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4 # Upgraded to v4
       with:
         name: approved-yoga-pose-model
         path: app/engine/yoga_pose_model.keras
@@ -53,3 +52,58 @@ jobs:
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: python generate_report.py
+# name: MLOps Production Pipeline
+
+# on:
+#   push:
+#     paths:
+#       - 'dataset/**'
+#       - 'train.py'
+
+# jobs:
+#   train-evaluate-deploy:
+#     runs-on: ubuntu-latest
+#     permissions:
+#       contents: write
+
+#     steps:
+#     - name: Checkout Code
+#       uses: actions/checkout@v3
+
+#     - name: Set up Python
+#       uses: actions/setup-python@v4
+#       with:
+#         python-version: "3.10"
+#         cache: 'pip' # 🚀 Upgraded: Caches dependencies to make the pipeline 3x faster!
+
+#     - name: Install ML Dependencies
+#       run: |
+#         python -m pip install --upgrade pip
+#         pip install tensorflow opencv-python-headless numpy scikit-learn pillow
+
+#     - name: Train Model
+#       run: python train.py
+
+#     - name: Evaluate Model
+#       # 🚀 Upgraded: If this script fails (accuracy < 70%), the pipeline stops here!
+#       run: python evaluate.py 
+
+#     - name: Upload Model Artifact
+#       # 🚀 Upgraded: Saves the model in the Actions tab for industry-standard tracking
+#       uses: actions/upload-artifact@v3
+#       with:
+#         name: approved-yoga-pose-model
+#         path: app/engine/yoga_pose_model.keras
+
+#     - name: Commit and Push Updated Model
+#       run: |
+#         git config --local user.email "mlops-action@github.com"
+#         git config --local user.name "MLOps Training Bot"
+#         git add app/engine/yoga_pose_model.keras
+#         git commit -m "🤖 MLOps Auto-Update: Retrained and validated yoga_pose_model.keras" || echo "No model changes detected"
+#         git push
+
+#     - name: Run Analysis
+#       env:
+#         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+#       run: python generate_report.py

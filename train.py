@@ -73,3 +73,6 @@ def train_model():
 
 if __name__ == "__main__":
     train_model()
+
+# Testing the MLOps pipeline automation!
+print("Training complete. Passing to evaluation...")
