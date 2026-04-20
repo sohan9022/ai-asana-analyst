@@ -12,22 +12,21 @@ from reportlab.platypus import (
     Table, TableStyle, Image as RLImage, HRFlowable
 )
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
-from reportlab.lib import colors
 
 from app.report.ai_coach import get_yoga_wisdom
 
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
-# ─────────────────────────────────────────────────────────────
-# 🔐 Load API key
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# 🔐 Load API Key (NEW SDK)
+# ─────────────────────────────────────────────
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
 # 🎨 Colors
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
 PRIMARY   = HexColor("#0f3460")
 GREEN     = HexColor("#28a745")
 RED       = HexColor("#dc3545")
@@ -36,29 +35,29 @@ BORDER    = HexColor("#dee2e6")
 DARK      = HexColor("#343a40")
 GRAY      = HexColor("#6c757d")
 
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
 # ✍️ Style helper
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
 def S(name, **kw):
     base = getSampleStyleSheet()["Normal"]
     return ParagraphStyle(name, parent=base, **kw)
 
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
 # 📊 Score calculation
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
 def calculate_score(all_violations, total_frames):
     if total_frames == 0:
         return 0.0
 
     total_violations = sum(len(v) for v in all_violations)
-    max_violations   = total_frames * 5  # assumption
+    max_violations   = total_frames * 5
 
     score = max(0, 100 - (total_violations / max_violations * 100))
     return round(score, 1)
 
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
 # 📄 Report generation
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
 def generate_report(pose_name, analysis_results, output_path):
 
     if not analysis_results:
@@ -187,7 +186,7 @@ def generate_report(pose_name, analysis_results, output_path):
 
         story.append(RLImage(tmp.name, width=img_w, height=img_h))
 
-    # ── AI Coaching ──
+    # ── AI Coaching (NEW SDK USED HERE) ──
     story.append(Spacer(1, 12))
     story.append(Paragraph("AI Coaching",
                            S("h2", fontSize=14, textColor=PRIMARY)))
@@ -195,7 +194,23 @@ def generate_report(pose_name, analysis_results, output_path):
     top_mistakes = unique_v[:2]
 
     try:
-        wisdom = get_yoga_wisdom(pose_name, score, top_mistakes)
+        prompt = f"""
+        You are a Yoga AI Coach.
+
+        Pose: {pose_name}
+        Score: {score}%
+        Issues: {", ".join([v['mistake'] for v in top_mistakes])}
+
+        Give short corrections and tips.
+        """
+
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt
+        )
+
+        wisdom = response.text
+
     except Exception:
         wisdom = "AI coaching unavailable."
 
@@ -205,36 +220,40 @@ def generate_report(pose_name, analysis_results, output_path):
     # ── Build PDF ──
     doc.build(story)
 
-    # Cleanup temp file
+    # Cleanup
     if tmp and os.path.exists(tmp.name):
         os.unlink(tmp.name)
 
     return output_path
 
-# ─────────────────────────────────────────────────────────────
-# 🤖 Gemini AI Assistance
-# ─────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────
+# 🤖 Standalone AI helper (NEW SDK)
+# ─────────────────────────────────────────────
 def generate_ai_assistance(pose_data):
 
     if not pose_data or not pose_data.get('violations'):
         return "Maintain your posture and breathing."
 
     prompt = f"""
-    You are a Yoga AI Coach.
+    You are a professional Yoga AI Coach.
 
     Pose: {pose_data['name']}
     Accuracy: {pose_data['accuracy']}%
     Issues: {", ".join(pose_data['violations'])}
 
-    Give:
-    - Corrections
-    - Tips
-    Keep concise.
+    Provide:
+    - Key corrections
+    - Helpful tips
+    Keep it concise and motivating.
     """
 
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt
+        )
         return response.text
-    except Exception:
-        return "AI coaching unavailable."
+
+    except Exception as e:
+        return f"AI coaching unavailable: {str(e)}"
