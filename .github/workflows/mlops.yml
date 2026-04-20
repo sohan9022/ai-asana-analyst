@@ -2,51 +2,48 @@ name: MLOps Production Pipeline
 
 on:
   push:
-    paths:
-      - 'dataset/**'
-      - 'train.py'
+    branches: [ master ]
 
 jobs:
   train-evaluate-deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v4 # Upgraded to v4
+      uses: actions/checkout@v4
 
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: "3.10"
-        cache: 'pip' # Requires a requirements.txt file in the repo to work
 
-    - name: Install ML Dependencies
+    - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        # ADDED: google-genai (or google-generativeai depending on your script)
-        pip install tensorflow opencv-python-headless numpy scikit-learn pillow google-genai
+        pip install tensorflow opencv-python-headless numpy scikit-learn pillow google-genai kagglehub
+
+    # 🔥 IMPORTANT: Pass Kaggle credentials
+    - name: Set Kaggle Credentials
+      env:
+        KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+        KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      run: echo "Kaggle credentials set"
 
     - name: Train Model
+      env:
+        KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+        KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
       run: python train.py
 
     - name: Evaluate Model
       run: python evaluate.py 
 
     - name: Upload Model Artifact
-      uses: actions/upload-artifact@v4 # Upgraded to v4
+      if: success()
+      uses: actions/upload-artifact@v4
       with:
-        name: approved-yoga-pose-model
+        name: yoga-model
         path: app/engine/yoga_pose_model.keras
-
-    - name: Commit and Push Updated Model
-      run: |
-        git config --local user.email "mlops-action@github.com"
-        git config --local user.name "MLOps Training Bot"
-        git add app/engine/yoga_pose_model.keras
-        git commit -m "🤖 MLOps Auto-Update: Retrained and validated yoga_pose_model.keras" || echo "No model changes detected"
-        git push
 
     - name: Run Analysis
       env:
