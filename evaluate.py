@@ -11,17 +11,15 @@ def evaluate_model():
 
     print("Dataset path:", dataset_path)
 
-    # 🔍 Find actual dataset folder
-    subfolders = os.listdir(dataset_path)
+    # 🔍 Find actual dataset folder safely
+    subfolders = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f))]
     actual_data_path = os.path.join(dataset_path, subfolders[0])
 
-    print("Actual data path:", actual_data_path)
     contents = os.listdir(actual_data_path)
-    print("Contents:", contents)
 
     img_height = 75
     img_width = 75
-    batch_size = 32
+    batch_size = 16 # ✅ Updated to match train.py
 
     # ✅ CASE 1: TEST folder exists
     if "TEST" in contents:
@@ -57,9 +55,8 @@ def evaluate_model():
             batch_size=batch_size
         )
 
-    # 🔄 Normalize
-    normalization_layer = tf.keras.layers.Rescaling(1./255)
-    test_ds = test_ds.map(lambda x, y: (normalization_layer(x), y))
+    # 🚨 MANUAL NORMALIZATION REMOVED 🚨
+    # The Keras model now handles tf.keras.layers.Rescaling(1./255) internally!
 
     # 🔥 Handle corrupted images
     test_ds = test_ds.apply(tf.data.experimental.ignore_errors())
@@ -71,7 +68,7 @@ def evaluate_model():
     loss, accuracy = model.evaluate(test_ds)
     print(f"🎯 New Model Accuracy: {accuracy * 100:.2f}%")
 
-    # 🚪 Gatekeeper logic (your original logic preserved)
+    # 🚪 Gatekeeper logic
     if accuracy < 0.70:
         print("❌ Model accuracy is too low. Rejecting deployment.")
         sys.exit(1)
