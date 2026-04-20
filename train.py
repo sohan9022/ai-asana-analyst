@@ -260,111 +260,91 @@ def train_model():
     dataset_path = kagglehub.dataset_download("niharika41298/yoga-poses-dataset")
 
     print("Dataset path:", dataset_path)
-    print("Root contents:", os.listdir(dataset_path))
-
+    
     # 🔍 Find actual dataset folder
     subfolders = os.listdir(dataset_path)
     actual_data_path = os.path.join(dataset_path, subfolders[0])
 
-    print("Actual data path:", actual_data_path)
-    print("Inside actual path:", os.listdir(actual_data_path))
-
     img_height = 75
     img_width = 75
-    batch_size = 32
+    batch_size = 16 # Matched to Colab
 
-    # ✅ CASE 1: dataset has TRAIN / TEST (uppercase)
     contents = os.listdir(actual_data_path)
+    
+    # ✅ Setup Train/Test directories based on dataset structure
     if "TRAIN" in contents and "TEST" in contents:
-        print("✅ Using TRAIN/TEST split")
-
         train_dir = os.path.join(actual_data_path, "TRAIN")
         test_dir = os.path.join(actual_data_path, "TEST")
-
-        train_ds = tf.keras.utils.image_dataset_from_directory(
-            train_dir,
-            image_size=(img_height, img_width),
-            batch_size=batch_size
-        )
-
-        val_ds = tf.keras.utils.image_dataset_from_directory(
-            test_dir,
-            image_size=(img_height, img_width),
-            batch_size=batch_size
-        )
-
-    # ✅ CASE 2: dataset has train/test (lowercase)
     elif "train" in contents and "test" in contents:
-        print("✅ Using train/test split")
-
         train_dir = os.path.join(actual_data_path, "train")
         test_dir = os.path.join(actual_data_path, "test")
-
-        train_ds = tf.keras.utils.image_dataset_from_directory(
-            train_dir,
-            image_size=(img_height, img_width),
-            batch_size=batch_size
-        )
-
-        val_ds = tf.keras.utils.image_dataset_from_directory(
-            test_dir,
-            image_size=(img_height, img_width),
-            batch_size=batch_size
-        )
-
-    # ✅ CASE 3: no split → use validation split
     else:
-        print("⚠️ No train/test split found. Using validation_split")
+        train_dir = actual_data_path
+        test_dir = actual_data_path # Will use validation split
 
-        train_ds = tf.keras.utils.image_dataset_from_directory(
-            actual_data_path,
-            validation_split=0.2,
-            subset="training",
-            seed=123,
-            image_size=(img_height, img_width),
-            batch_size=batch_size
-        )
+    print("Loading datasets...")
+    train_ds = tf.keras.utils.image_dataset_from_directory(
+        train_dir,
+        validation_split=0.2 if train_dir == test_dir else None,
+        subset="training" if train_dir == test_dir else None,
+        seed=123,
+        image_size=(img_height, img_width),
+        batch_size=batch_size
+    )
 
-        val_ds = tf.keras.utils.image_dataset_from_directory(
-            actual_data_path,
-            validation_split=0.2,
-            subset="validation",
-            seed=123,
-            image_size=(img_height, img_width),
-            batch_size=batch_size
-        )
+    val_ds = tf.keras.utils.image_dataset_from_directory(
+        train_dir if train_dir == test_dir else test_dir,
+        validation_split=0.2 if train_dir == test_dir else None,
+        subset="validation" if train_dir == test_dir else None,
+        seed=123,
+        image_size=(img_height, img_width),
+        batch_size=batch_size
+    )
 
-    # 🔄 Normalize data
-    normalization_layer = tf.keras.layers.Rescaling(1./255)
-    train_ds = train_ds.map(lambda x, y: (normalization_layer(x), y))
-    val_ds = val_ds.map(lambda x, y: (normalization_layer(x), y))
-
-    # 🔥 Handle corrupted images (IMPORTANT FIX)
+    # 🔥 Handle corrupted images
     train_ds = train_ds.apply(tf.data.experimental.ignore_errors())
     val_ds = val_ds.apply(tf.data.experimental.ignore_errors())
 
-    # 🧠 Model architecture
+    # 🧠 Advanced Model Architecture (Matched to Colab)
     model = tf.keras.Sequential([
         tf.keras.layers.Input(shape=(75, 75, 3)),
-        tf.keras.layers.Conv2D(32, (3, 3), activation='relu'),
+        
+        # 🔄 Data Augmentation built directly into the model
+        tf.keras.layers.RandomFlip("horizontal"),
+        tf.keras.layers.RandomTranslation(height_factor=0.0, width_factor=0.1),
+        tf.keras.layers.Rescaling(1./255),
+
+        # Conv Block 1
+        tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding='same'),
         tf.keras.layers.MaxPooling2D(2, 2),
-        tf.keras.layers.Conv2D(64, (3, 3), activation='relu'),
+        tf.keras.layers.Dropout(0.25),
+        
+        # Conv Block 2
+        tf.keras.layers.Conv2D(128, (3, 3), activation='relu', padding='same'),
         tf.keras.layers.MaxPooling2D(2, 2),
+        tf.keras.layers.Dropout(0.25),
+        
+        # Conv Block 3
+        tf.keras.layers.Conv2D(256, (3, 3), activation='relu', padding='same'),
+        tf.keras.layers.MaxPooling2D(2, 2),
+        tf.keras.layers.Dropout(0.25),
+        
+        # Dense Block
         tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dense(1024, activation='relu'),
         tf.keras.layers.Dropout(0.5),
         tf.keras.layers.Dense(5, activation='softmax')
     ])
 
     model.compile(
-        optimizer='adam',
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy']
     )
 
     # 🚀 Train model
-    print("Training model...")
-    model.fit(train_ds, validation_data=val_ds, epochs=15)
+    print("Training advanced model...")
+    model.fit(train_ds, validation_data=val_ds, epochs=50)
 
     # 💾 Save model
     save_dir = "app/engine"
@@ -373,7 +353,6 @@ def train_model():
 
     model.save(model_path)
     print(f"✅ Model saved at {model_path}")
-
 
 if __name__ == "__main__":
     train_model()

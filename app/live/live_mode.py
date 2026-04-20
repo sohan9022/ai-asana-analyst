@@ -413,6 +413,7 @@ import numpy as np
 import tensorflow as tf
 import os
 import base64
+import urllib.request
 
 # Local Engine & AI Imports
 from app.engine.constraint_engine import run_constraint_check, calculate_angle
@@ -427,8 +428,29 @@ from app.report.report_generator import generate_report
 # ── LOAD KERAS CNN MODEL ──────────────────────────────────────────────────────
 @st.cache_resource 
 def load_pose_classifier():
+    model_path = "app/engine/yoga_pose_model.keras"
+    
+    # 👇 CHANGE THESE TWO LINES to match your exact GitHub details
+    GITHUB_USER = os.getenv("GITHUB_USER")
+    GITHUB_REPO = os.getenv("GITHUB_REPO")
+    
+    # This magic URL automatically grabs the file from your newest Release
+    github_url = f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}/releases/latest/download/yoga_pose_model.keras"
+
+    # 1. If the model isn't on your computer, download it!
+    if not os.path.exists(model_path):
+        st.info("Downloading latest AI model from GitHub... please wait.")
+        try:
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            urllib.request.urlretrieve(github_url, model_path)
+            st.success("✅ Download complete! Starting AI Coach...")
+        except Exception as e:
+            st.error(f"Failed to download model. Ensure your username and repo are correct. Error: {e}")
+            return None
+
+    # 2. Load the model into the app
     try:
-        model = tf.keras.models.load_model("app/engine/yoga_pose_model.keras")
+        model = tf.keras.models.load_model(model_path)
         return model
     except Exception as e:
         st.error(f"Failed to load CNN model: {e}")
