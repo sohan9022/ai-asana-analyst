@@ -144,6 +144,111 @@
 # if __name__ == "__main__":
 #     train_model()
 
+# import os
+# import kagglehub
+# import tensorflow as tf
+
+# def train_model():
+#     print("🚀 Starting MLOps Automated Training Pipeline...")
+
+#     # 📥 Download dataset
+#     dataset_path = kagglehub.dataset_download("niharika41298/yoga-poses-dataset")
+
+#     print("Dataset path:", dataset_path)
+#     print("Root contents:", os.listdir(dataset_path))
+
+#     # 🔍 Find actual dataset folder
+#     subfolders = os.listdir(dataset_path)
+#     actual_data_path = os.path.join(dataset_path, subfolders[0])
+
+#     print("Actual data path:", actual_data_path)
+#     print("Inside actual path:", os.listdir(actual_data_path))
+
+#     img_height = 75
+#     img_width = 75
+#     batch_size = 32
+
+#     # ✅ CASE 1: If dataset already has train/test folders
+#     if "train" in os.listdir(actual_data_path) and "test" in os.listdir(actual_data_path):
+#         print("✅ Using existing train/test split")
+
+#         train_dir = os.path.join(actual_data_path, "train")
+#         test_dir = os.path.join(actual_data_path, "test")
+
+#         train_ds = tf.keras.utils.image_dataset_from_directory(
+#             train_dir,
+#             image_size=(img_height, img_width),
+#             batch_size=batch_size
+#         )
+
+#         val_ds = tf.keras.utils.image_dataset_from_directory(
+#             test_dir,
+#             image_size=(img_height, img_width),
+#             batch_size=batch_size
+#         )
+
+#     # ✅ CASE 2: If dataset has only class folders (no split)
+#     else:
+#         print("⚠️ No train/test split found. Using validation_split")
+
+#         train_ds = tf.keras.utils.image_dataset_from_directory(
+#             actual_data_path,
+#             validation_split=0.2,
+#             subset="training",
+#             seed=123,
+#             image_size=(img_height, img_width),
+#             batch_size=batch_size
+#         )
+
+#         val_ds = tf.keras.utils.image_dataset_from_directory(
+#             actual_data_path,
+#             validation_split=0.2,
+#             subset="validation",
+#             seed=123,
+#             image_size=(img_height, img_width),
+#             batch_size=batch_size
+#         )
+
+#     # 🔄 Normalize data
+#     normalization_layer = tf.keras.layers.Rescaling(1./255)
+#     train_ds = train_ds.map(lambda x, y: (normalization_layer(x), y))
+#     val_ds = val_ds.map(lambda x, y: (normalization_layer(x), y))
+
+#     # 🧠 Model
+#     model = tf.keras.Sequential([
+#         tf.keras.layers.Input(shape=(75, 75, 3)),
+#         tf.keras.layers.Conv2D(32, (3, 3), activation='relu'),
+#         tf.keras.layers.MaxPooling2D(2, 2),
+#         tf.keras.layers.Conv2D(64, (3, 3), activation='relu'),
+#         tf.keras.layers.MaxPooling2D(2, 2),
+#         tf.keras.layers.Flatten(),
+#         tf.keras.layers.Dense(128, activation='relu'),
+#         tf.keras.layers.Dropout(0.5),
+#         tf.keras.layers.Dense(5, activation='softmax')
+#     ])
+
+#     model.compile(
+#         optimizer='adam',
+#         loss='sparse_categorical_crossentropy',
+#         metrics=['accuracy']
+#     )
+
+#     # 🚀 Train
+#     print("Training model...")
+#     model.fit(train_ds, validation_data=val_ds, epochs=15)
+
+#     # 💾 Save model
+#     save_dir = "app/engine"
+#     os.makedirs(save_dir, exist_ok=True)
+#     model_path = os.path.join(save_dir, "yoga_pose_model.keras")
+
+#     model.save(model_path)
+#     print(f"✅ Model saved at {model_path}")
+
+
+# if __name__ == "__main__":
+#     train_model()
+
 import os
 import kagglehub
 import tensorflow as tf
@@ -151,7 +256,7 @@ import tensorflow as tf
 def train_model():
     print("🚀 Starting MLOps Automated Training Pipeline...")
 
-    # 📥 Download dataset
+    # 📥 Download dataset from Kaggle
     dataset_path = kagglehub.dataset_download("niharika41298/yoga-poses-dataset")
 
     print("Dataset path:", dataset_path)
@@ -168,9 +273,29 @@ def train_model():
     img_width = 75
     batch_size = 32
 
-    # ✅ CASE 1: If dataset already has train/test folders
-    if "train" in os.listdir(actual_data_path) and "test" in os.listdir(actual_data_path):
-        print("✅ Using existing train/test split")
+    # ✅ CASE 1: dataset has TRAIN / TEST (uppercase)
+    contents = os.listdir(actual_data_path)
+    if "TRAIN" in contents and "TEST" in contents:
+        print("✅ Using TRAIN/TEST split")
+
+        train_dir = os.path.join(actual_data_path, "TRAIN")
+        test_dir = os.path.join(actual_data_path, "TEST")
+
+        train_ds = tf.keras.utils.image_dataset_from_directory(
+            train_dir,
+            image_size=(img_height, img_width),
+            batch_size=batch_size
+        )
+
+        val_ds = tf.keras.utils.image_dataset_from_directory(
+            test_dir,
+            image_size=(img_height, img_width),
+            batch_size=batch_size
+        )
+
+    # ✅ CASE 2: dataset has train/test (lowercase)
+    elif "train" in contents and "test" in contents:
+        print("✅ Using train/test split")
 
         train_dir = os.path.join(actual_data_path, "train")
         test_dir = os.path.join(actual_data_path, "test")
@@ -187,7 +312,7 @@ def train_model():
             batch_size=batch_size
         )
 
-    # ✅ CASE 2: If dataset has only class folders (no split)
+    # ✅ CASE 3: no split → use validation split
     else:
         print("⚠️ No train/test split found. Using validation_split")
 
@@ -214,7 +339,11 @@ def train_model():
     train_ds = train_ds.map(lambda x, y: (normalization_layer(x), y))
     val_ds = val_ds.map(lambda x, y: (normalization_layer(x), y))
 
-    # 🧠 Model
+    # 🔥 Handle corrupted images (IMPORTANT FIX)
+    train_ds = train_ds.apply(tf.data.experimental.ignore_errors())
+    val_ds = val_ds.apply(tf.data.experimental.ignore_errors())
+
+    # 🧠 Model architecture
     model = tf.keras.Sequential([
         tf.keras.layers.Input(shape=(75, 75, 3)),
         tf.keras.layers.Conv2D(32, (3, 3), activation='relu'),
@@ -233,7 +362,7 @@ def train_model():
         metrics=['accuracy']
     )
 
-    # 🚀 Train
+    # 🚀 Train model
     print("Training model...")
     model.fit(train_ds, validation_data=val_ds, epochs=15)
 
